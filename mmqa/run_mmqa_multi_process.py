@@ -5,13 +5,12 @@ from multiprocessing import Pool, Manager
 from functools import partial
 
 from tqdm import tqdm
-from datasets import load_dataset
 
 from parse_args import arg_parse
-from run_mmqa import run_single_case, load_mmqa, get_output_file_path
+from run_mmqa import run_single_case, load_mmqa
 
 def worker(example, args, lock):
-    output_file_path = get_output_file_path(args)
+    output_file_path = args.output
     result = run_single_case((example, args))
     with lock:
         results = []
@@ -34,7 +33,7 @@ if __name__ == "__main__":
 
     logging.info(f"Args: {args}")
 
-    output_file_path = get_output_file_path(args)
+    output_file_path = args.output
     
     mmqa_dev = load_mmqa(args)
 
@@ -48,8 +47,6 @@ if __name__ == "__main__":
 
     manager = Manager()
     lock = manager.Lock()
-
-    output_file_path = os.path.join(args.output_path, 'predict.json')
 
     func = partial(worker, args=args, lock=lock)
 

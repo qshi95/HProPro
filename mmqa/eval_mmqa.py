@@ -1,6 +1,5 @@
 import json
 from parse_args import arg_parse
-from run_mmqa import get_output_file_path
 from evaluator import evaluate_predictions
 
 def eval_mmqa(results):
@@ -13,9 +12,8 @@ def eval_mmqa(results):
 
 if __name__ == '__main__':
     args = arg_parse()
-    result_path = get_output_file_path(args)
+    result_path = args.output
     with open(result_path) as f:
         results = json.load(f)
     eval_score, instance_eval_results = eval_mmqa(results)
     print(eval_score)
-    # print(instance_eval_results)

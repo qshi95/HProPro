@@ -47,44 +47,47 @@ def api_call(messages, model='gpt-3.5-turbo', temperature=0, n=1):
         str: The generated content of the model.
     """
     import openai
-    from openai import AzureOpenAI
+    import requests
     
-    api_key = os.getenv("YUNFU_API_KEY", "")
+    api_key = os.getenv("API_KEY", "")
     if api_key == "" or api_key == None:
         print("None API KEY found!")
         exit()
 
     if model in ['gpt-3.5-turbo', '3.5', 'gpt3.5', 'chatgpt', '35', 'gpt35']:
-        engine = '35turbo'
+        model = 'gpt-3.5-turbo'
     elif model in ["gpt4", 'gpt-4', '4']:
-        engine = 'gpt4'
+        model = 'gpt-4'
+    elif model in ["gpt4v", "gpt-4v", "4v"]:
+        model = 'gpt-4-vision-preview'
     else:
         print(f"Wrong model Name: {model}.")
         exit()
     
-    client = AzureOpenAI(
-        api_version="2023-07-01-preview",
-        azure_endpoint = "https://yfllm02.openai.azure.com/",
-        api_key = api_key
-    )
     while True:
         try:
-            res = client.chat.completions.create(
-                model=engine,             # from YUN FU
-                # model=model,                    # from scirQA
-                messages=messages,
-                temperature=temperature,
-                top_p=1,
-                frequency_penalty=0,
-                presence_penalty=0,
-                n=n
-            )
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}"
+            }
+            payload = {
+                "model": model,
+                "messages": messages, 
+                "temperature": temperature, 
+                "top_p": 1, 
+                "frequency_penalty": 0, 
+                "presence_penalty": 0, 
+                "n": n
+            }
+            res = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload).json()
+            res = [r['message']['content'] for r in res['choices']]
+
             return res
         
         except openai.RateLimitError as e:
             err_mes = str(e)
             if "You exceeded your current quota" in err_mes:
-                print("You exceeded your current quota: %s" % client.api_key)
+                print("You exceeded your current quota: %s" % api_key)
             print('openai.error.RateLimitError\nRetrying...')
             sleep(30)
         except openai.APITimeoutError:
@@ -93,7 +96,13 @@ def api_call(messages, model='gpt-3.5-turbo', temperature=0, n=1):
         except openai.APIConnectionError:
             print('openai.error.APIConnectionError\nRetrying...')
             sleep(20)
-        except openai.BadRequestError:
-            print('openai.BadRequestError\nRetrying..')
+        except openai.BadRequestError as e:
+            print(e)
+            print('openai.BadRequestError\n exit..')
+            return [""]
+        except requests.exceptions.ConnectTimeout:
+            print('requests.exception.ConnectTimeout')
             sleep(20)
-            return "BadRequestError"
+        except KeyError:
+            print(res)
+            return [res]

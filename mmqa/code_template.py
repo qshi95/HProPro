@@ -1,15 +1,10 @@
-import os
 import json
-# from PIL import Image
 import dateparser
 
 from prompt.convert_datetime import CONVERT_DATETIME
 from prompt.check_prompt import CHECK_PROMPT
-from prompt.extract_info import EXTRACT_INFO_CAPTION, EXTRACT_IMAGE_INFO
+from prompt.extract_info import EXTRACT_IMAGE_INFO
 from query_api import query_API
-# from vision_language import vqa
-from datetime import timedelta
-# from vision_language import vqa
 
 with open('./url_map.json') as f:
     url_map = json.load(f)
@@ -73,47 +68,7 @@ def convert_time(time_str):
     result = dateparser.parse(result)
     return result
 
-def extract_info_caption(cell, query) -> str:
-    """Get the answer from the text from the hyperlink according to the given query.
-
-    Args:
-        cell (str): target cell in the table
-        query (str): the target information we want the model to get
-    """    
-    # obtain the passages
-
-    if cell == "" or cell == None:
-        return "NOT_AVAILABLE"
-
-    hyperlink = cell
-    
-    passage = "" if hyperlink not in url_map else url_map[hyperlink]['passage']
-    #caption = "" if hyperlink not in url_map or len(url_map[hyperlink]['image']) == 0 else url_map[hyperlink]['image']['caption']
-    caption = ""
-    if hyperlink in url_map and len(url_map[hyperlink]['image']) > 0:
-        if 'new_caption' in url_map[hyperlink]['image']:
-            caption = url_map[hyperlink]['image']['new_caption']
-        else:
-            caption = vqa(Image.open(url_map[hyperlink]['image']['path']), "Please describe this image in as much detail as possible.")
-            url_map[hyperlink]['image']['new_caption'] = caption
-            with open('./url_map.json', 'w') as f:
-                json.dump(url_map, f)
-
-    # If you want to modify the text, go to 
-    # prompt/extract_info.py
-
-    prompt = EXTRACT_INFO_CAPTION
-    
-    #print(passage)
-    prompt = prompt.replace("[PASSAGE]", passage)
-    prompt = prompt.replace("[CAPTION]", f'Caption:\n{caption}')
-    prompt = prompt.replace("[QUERY]", query)
-
-    result = query_API(prompt, model='gpt4')
-
-    return result[0]
-
-def extract_image_info(cell, query:str) -> str:
+def extract_info(cell, query:str) -> str:
     """Get the answer from the image from the hyperlink according to the given query.
 
     Args:
@@ -136,16 +91,12 @@ def extract_image_info(cell, query:str) -> str:
 
     prompt = EXTRACT_IMAGE_INFO
     
-    #print(passage)
     prompt = prompt.replace("[PASSAGE]", passage)
     prompt = prompt.replace("[QUERY]", query)
 
     if len(image_path) > 0:
         result = query_API(prompt, image_path, model='gpt4v')
-        #result = vqa(Image.open(image_path[0]), prompt)
     else:
         result = query_API(prompt, model='gpt4')
 
     return result[0]
-
-extract_info = extract_image_info

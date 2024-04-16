@@ -30,23 +30,11 @@ gpt4_token_consumption = 0
 
 retriever = Retriever()
 
-def get_output_file_path(args):
-    output_file_path = './result/mmqa_result'
-    output_file_path += '_o' if args.use_oracle else '_r'
-    output_file_path += '_rf' if args.reflection else ''
-    output_file_path += '_wos' if args.not_simplify else ''
-    output_file_path += '_woc' if args.not_check else ''
-    output_file_path += '_cot' if args.use_cot else ''
-    output_file_path += f'_s{args.seed}' if args.seed > -1 else ''
-    output_file_path += f'_{args.sample_num}' if args.sample_num > 0 else ''
-    output_file_path += '.json'
-    return output_file_path
-
 def simplify(example, args):
     question = example['question']
 
     if args.use_oracle:
-        retrieved_passages, retrieved_images = retriever.retrieve_oracle(example)
+        retrieved_passages, retrieved_images = retriever.oracle(example)
     else:
         retrieved_passages, retrieved_images = retriever.retrieve(example, 
                                                                   retrieve_top_k=args.retrieve_top_k, 
@@ -59,11 +47,6 @@ def simplify(example, args):
         passage_prompts = []
         for idx, retrieved_passage in enumerate(retrieved_passages):
             passage_prompt = "Passage {0}:\nThis passage is about {1}. Its content is: {2}".format(idx+1, retrieved_passage['title'], retrieved_passage['text'])
-            if args.with_row and retrieved_passage['cell'] != None:
-                i, _ = retrieved_passage['cell']
-                header = example['table']['header'][0]
-                cell_info = example['table']['rows'][0][i]
-                passage_prompt += "\nThe table row about this passage is:\n{0}\n{1}".format('|'.join(header), '|'.join(cell_info))
             passage_prompts.append(passage_prompt)
         simplify_prompt = simplify_prompt.replace('[KNOWLEDGE]', '\n'.join(passage_prompts))
         simplify_prompt = simplify_prompt.replace('[IMAGE]', '')
@@ -84,20 +67,10 @@ def simplify(example, args):
             else:
                 image_path.append(retrieved_image['path'])
                 image_prompt = "Image {0}:This image is about {1}.".format(idx+1, retrieved_image['title'])
-        
-            if args.with_row and retrieved_image['cell'] != None:
-                i, _ = retrieved_image['cell']
-                header = example['table']['header'][0]
-                cell_info = example['table']['rows'][0][i]
-                image_prompt += "\nThe table row about this image is:\n{0}\n{1}".format('|'.join(header), '|'.join(cell_info))
             image_prompts.append(image_prompt)
         simplify_prompt = simplify_prompt.replace('[KNOWLEDGE]', '')
         simplify_prompt = simplify_prompt.replace('[IMAGE]', '\n'.join(image_prompts))
 
-        if args.use_caption:
-            model = 'gpt4'
-        else:
-            model = 'gpt4v'
         simplify_question = query_API(simplify_prompt, image_path=image_path, model='gpt4')[0]
         if simplify_question is not None and simplify_question != ""and "NO_SIMPLIFY" not in simplify_question:
             question = simplify_question
@@ -124,7 +97,6 @@ def create_few_shot_code_prompt(shot_num: int, not_check: bool, use_cot: bool):
 
     with open(few_shot_case_path, 'r') as fin:
         shot_cases = json.load(fin)
-    # shot_cases = random.sample(shot_cases, shot_num)
     shot_cases = list(shot_cases.values())[:shot_num]
     
     prompt += "--------------------\nFor Example:\n"
@@ -136,11 +108,6 @@ def create_few_shot_code_prompt(shot_num: int, not_check: bool, use_cot: bool):
         prompt += "[Table]\n"
         prompt += case['table']
         prompt += "\n[Question]\n{}".format(case['question'])
-        # if 'knowledge' in case.keys():
-        #     # prompt += "[Retrieved]\n"
-        #     prompt += "Besides, we have already retrieved some potential relevant knowledge to solve this question:\n"
-        #     prompt += 'Knowledge regarding {} {}'.format(case['knowledge'].split('\t')[0], case['knowledge'].split('\t')[1])
-        #     # prompt += case['knowledge']
         prompt += "\n[Code]\n"
         prompt += case['code']
         prompt += "\n\n"
@@ -174,7 +141,7 @@ def create_test_prompt(example: Dict[str, Any], args):
     prompt += f'{question}\n'
 
 
-    retrieved_passages, retrieved_images = retriever.retrieve_oracle(example)
+    retrieved_passages, retrieved_images = retriever.oracle(example)
     prompt += "\nBesides, I've found some related passages and images:\n"
     prompt += "Passages:\n"
     for passage in retrieved_passages:
@@ -240,10 +207,6 @@ def run_single_case(example_and_args: tuple) -> dict:
         f"ID: {example['id']}\n{full_prompt}\n"
         "==================="
         )
-
-    if args.dry_run:
-        print(full_prompt)
-        exit()
 
     """Run the model to generate the code."""
     response = query_API(full_prompt, model=args.model, temperature=args.temperature)[0]
@@ -325,10 +288,16 @@ def load_mmqa(args, split='validation'):
         data_item['table']['page_title'] = data_item['table']['title']
         new_dataset_split_loaded.append(data_item)
     mmqa_dev = new_dataset_split_loaded
-    if args.sample_num > 0:
+    if args.replicate:
+        # Load data used in ablation experiments
+        with open('./sampled_id_200.json', encoding='utf-8') as f:
+            sampled_id = set(json.load(f))
+        mmqa_dev = [data for data in mmqa_dev if data['id'] in sampled_id]
+    elif args.sample_num > 0:
         mmqa_dev = random.sample(mmqa_dev, args.sample_num)
-    elif args.start > 0 or args.end > -1:
-        mmqa_dev = mmqa_dev[args.start:args.end]
+    elif args.start != 0 or args.end != 0:
+        end = args.end if args.end != 0 else len(mmqa_dev)
+        mmqa_dev = mmqa_dev[args.start:end]
 
     return mmqa_dev
 
@@ -345,8 +314,9 @@ if __name__ == "__main__":
 
     mmqa_dev = load_mmqa(args)
 
-    output_file_path = get_output_file_path(args)
+    output_file_path = args.output
 
+    results = []
     if os.path.exists(output_file_path):
         finished_id = set()
         with open(output_file_path) as f:
@@ -359,9 +329,6 @@ if __name__ == "__main__":
 
     for idx, example in tqdm(enumerate(mmqa_dev), total=len(mmqa_dev)):
         result = run_single_case((example, args))
-        if os.path.exists(output_file_path):
-            with open(output_file_path) as f:
-                results = json.load(f)
         results.append(result)
         with open(output_file_path, 'w') as f:
             json.dump(results, f)
