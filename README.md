@@ -32,13 +32,19 @@ export OPENAI_API_KEY="your-api-key-here"
 
 3. Run code
 ```
+# For HybridQA
 bash run_mt.sh
+# For MMQA
+bash run_mmqa_mt.sh
 ```
 You can customize the required parameters in:
-* run_mt.sh
-* run_mt_oracle.sh
-* run_mt_end2end.sh
-* run_single.sh
+* For HybridQA
+    * run_mt.sh
+    * run_mt_oracle.sh
+    * run_mt_end2end.sh
+    * run_single.sh
+* For MMQA
+    * run_mmqa_*.sh
 
 
 ## Citation
