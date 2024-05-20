@@ -1,6 +1,6 @@
 # HProPro
 
-Code for paper [Exploring Hybrid Question Answering via Program-based Prompting](https://arxiv.org/pdf/2402.10812.pdf).
+Code for paper [Exploring Hybrid Question Answering via Program-based Prompting (ACL 2024)](https://arxiv.org/pdf/2402.10812.pdf).
 
 
 ## Introduction
